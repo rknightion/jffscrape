@@ -81,6 +81,22 @@ include_locked = false
 - **Performer scraping**: Use “Scrape with…” on the performer URL to populate the performer entry.
 - **Gallery scraping**: Use “Scrape with…” on the performer URL and select the gallery scraper to return photo URLs for the latest photo post. Video posts will not return a gallery.
 
+### Scrape by URL vs Scrape by Fragment
+
+**Scrape by URL** uses the URL you provide (typically a performer profile). This is the most reliable flow for JFF since posts are not exposed as unique URLs.
+
+**Scrape by Fragment** is used by the Tagger view. Stash passes a JSON “fragment” of the current scene (title, date, details, URL, etc.). The scraper tries to match a post by:
+1. post ID (if Stash provided one), otherwise
+2. title/details text substring, otherwise
+3. the latest visible post.
+
+### Recommended tagging workflow
+
+1. Set the scene URL in Stash to the performer profile (e.g. `https://justfor.fans/BoundEagle1`).
+2. Ensure `poster_id_map` contains that username.
+3. Use **Scrape by URL** for the most consistent results.
+4. If you use **Scrape by Fragment**, make sure the scene title roughly matches a post title snippet (the scraper uses a substring match).
+
 ## Publish this repo as a scraper source (GitHub Pages)
 
 This repo includes the same build/validation tooling used by Community/FansDB scrapers. The `build_site.sh` script generates an `index.yml` and zipped packages. The GitHub Actions workflow publishes them to GitHub Pages under `/main/`.

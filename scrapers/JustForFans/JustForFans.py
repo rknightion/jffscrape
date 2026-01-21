@@ -1,9 +1,14 @@
 import json
+import os
 import re
 import sys
 from dataclasses import dataclass
 from typing import Iterable, Optional, List, Tuple
 from urllib.parse import parse_qs, urlparse
+
+SCRAPERS_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if SCRAPERS_ROOT not in sys.path:
+    sys.path.insert(0, SCRAPERS_ROOT)
 
 from py_common.config import get_config
 from py_common.deps import ensure_requirements
