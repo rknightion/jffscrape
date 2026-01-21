@@ -83,6 +83,12 @@ def _normalize_digits(value: Optional[str]) -> str:
     return re.sub(r"\D", "", value)
 
 
+def _normalize_key(value: str) -> str:
+    if not value:
+        return ""
+    return re.sub(r"[^a-z0-9]", "", value.lower())
+
+
 def _extract_ids_from_url(url: Optional[str]) -> Tuple[str, str]:
     if not url:
         return "", ""
@@ -136,7 +142,7 @@ def _parse_poster_id_map(value: str) -> dict:
             key, val = entry.split("=", 1)
         else:
             continue
-        key = key.strip().lower()
+        key = _normalize_key(key.strip())
         val = _normalize_digits(val.strip())
         if key and val:
             mapping[key] = val
@@ -146,7 +152,8 @@ def _parse_poster_id_map(value: str) -> dict:
 def _poster_id_from_map(username: str) -> str:
     raw = getattr(CONFIG, "poster_id_map", "") or ""
     mapping = _parse_poster_id_map(raw)
-    return mapping.get(username.lower(), "") if username else ""
+    normalized = _normalize_key(username) if username else ""
+    return mapping.get(normalized, "") if normalized else ""
 
 
 def _parse_date(raw: str) -> Optional[str]:

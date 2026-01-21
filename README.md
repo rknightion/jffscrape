@@ -34,7 +34,7 @@ user_hash_4 = your_userhash4_cookie_value
 
 ## Poster ID mapping (important)
 
-JustForFans does not expose `PosterID` in the performer URL or in the profile HTML. You must map usernames to their numeric poster IDs.
+JustForFans does not expose `PosterID` in the performer URL or in the profile HTML. You must map usernames to their numeric poster IDs. Username matching is case-insensitive and ignores non-alphanumeric characters, so `blake_m_davies`, `Blake-M-Davies`, and `blake m davies` all map the same.
 
 Add this to `scrapers/JustForFans/config.ini`:
 
