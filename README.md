@@ -139,3 +139,4 @@ This writes `_site/main/index.yml` and a `JustForFans.zip` package for Stash.
 - **Cloudflare block**: Try `impersonate = chrome` or a higher chrome profile value, and refresh `user_hash_4`.
 - **Missing poster ID**: Add `poster_id_map` for the username. The scraper will log a hint when this is missing.
 - **No posts found**: Increase `max_pages` and confirm your subscription/access to the performer.
+- **ModuleNotFoundError: py_common**: Make sure the `py_common` package is installed alongside the scraper (it should be pulled automatically from the source because `JustForFans` requires it). Verify the folder exists at `/config/scrapers/<local-path>/py_common` and reinstall the source if needed.

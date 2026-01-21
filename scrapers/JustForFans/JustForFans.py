@@ -10,10 +10,22 @@ SCRAPERS_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if SCRAPERS_ROOT not in sys.path:
     sys.path.insert(0, SCRAPERS_ROOT)
 
-from py_common.config import get_config
-from py_common.deps import ensure_requirements
-import py_common.log as log
-from py_common.util import scraper_args
+try:
+    from py_common.config import get_config
+    from py_common.deps import ensure_requirements
+    import py_common.log as log
+    from py_common.util import scraper_args
+except ModuleNotFoundError as exc:
+    if exc.name and exc.name.startswith("py_common"):
+        sys.stderr.write(
+            "Missing dependency package 'py_common'. Ensure your scraper source "
+            "installs dependencies and that this directory exists:\n"
+            f"  {os.path.join(SCRAPERS_ROOT, 'py_common')}\n"
+            "If you installed manually, copy scrapers/py_common alongside JustForFans.\n"
+        )
+        print("null")
+        sys.exit(1)
+    raise
 
 # Dependencies are installed into scrapers/automatic_dependencies on first run
 ensure_requirements("bs4:beautifulsoup4", "python-dateutil", "curl_cffi==0.14.0")

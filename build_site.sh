@@ -15,6 +15,7 @@ shopt -s nullglob
 
 rm -rf "$outdir"
 mkdir -p "$outdir"
+outdir_abs=$(cd "$outdir" && pwd)
 
 buildScraper() 
 {
@@ -40,7 +41,7 @@ buildScraper()
     
     # create the zip file
     # copy other files
-    zipfile=$(realpath "$outdir/$scraper_id.zip")
+    zipfile="$outdir_abs/$scraper_id.zip"
 
     name=$(grep "^name:" "$f" | cut -d' ' -f2- | sed -e 's/\r//' -e 's/^"\(.*\)"$/\1/')
     ignore=$(grep "^# ignore:" "$f" | cut -c 10- | sed -e 's/\r//')
