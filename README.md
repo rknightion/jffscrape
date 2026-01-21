@@ -79,12 +79,42 @@ include_locked = false
 
 - **Performer scraping**: Use “Scrape with…” on the performer URL to populate the performer entry.
 
+## Publish this repo as a scraper source (GitHub Pages)
+
+This repo includes the same build/validation tooling used by Community/FansDB scrapers. The `build_site.sh` script generates an `index.yml` and zipped packages. The GitHub Actions workflow publishes them to GitHub Pages under `/main/`.
+
+1. Initialize the repo and push it to GitHub on the `main` branch.
+2. In GitHub: Settings → Pages → Source → **GitHub Actions**.
+3. Push a commit to `main` (or run the “Publish Scraper Source” workflow).
+4. Your source index will be available at:
+   - `https://<your-username>.github.io/<your-repo>/main/index.yml`
+
+### Add the source in Stash
+
+In Stash: Settings → Metadata Providers → Available Scrapers → Add Source
+
+- **Name**: `JFFScrape` (or whatever you want)
+- **Source URL**: the `index.yml` URL above
+- **Local Path**: `jffscrape` (short folder name)
+
+### Local build (optional)
+
+You can generate the index locally to inspect it:
+
+```bash
+./build_site.sh _site/main
+```
+
+This writes `_site/main/index.yml` and a `JustForFans.zip` package for Stash.
+
 ## Files
 
 - `scrapers/JustForFans/JustForFans.yml` - Stash scraper definition
 - `scrapers/JustForFans/JustForFans.py` - Script scraper implementation
 - `scrapers/JustForFans/config.example.ini` - Example configuration template
 - `scrapers/py_common` - Helper utilities used by script scrapers
+- `build_site.sh` - Builds `index.yml` + scraper zips for GitHub Pages
+- `validate.js` / `validator/` - Scraper schema validation (CI)
 
 ## Troubleshooting
 
