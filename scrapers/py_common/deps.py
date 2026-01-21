@@ -1,6 +1,7 @@
 import sys
 import subprocess
 import re
+import os
 from pathlib import Path
 from inspect import stack
 
@@ -77,13 +78,18 @@ def ensure_requirements(*deps: str):
         log.debug(f"Failed to import '{e.name}'")
 
     package_names = [parsed[0] for parsed in parsed_deps.values() if parsed]
-    log.warning(f"Installing dependencies: {', '.join(package_names)}")
-    log.warning(
+    log.info(f"Installing dependencies: {', '.join(package_names)}")
+    log.info(
         "This can take a while! If you install the dependencies manually "
         "you can avoid this step in the future"
     )
 
     deps_folder.mkdir(exist_ok=True)
+    env = os.environ.copy()
+    env.setdefault("PIP_DISABLE_PIP_VERSION_CHECK", "1")
+    env.setdefault("PIP_NO_CACHE_DIR", "1")
+    env.setdefault("PIP_ROOT_USER_ACTION", "ignore")
+    env.setdefault("PIP_PROGRESS_BAR", "off")
     subprocess.check_call(
         [
             sys.executable,
@@ -91,11 +97,13 @@ def ensure_requirements(*deps: str):
             "pip",
             "install",
             "--no-input",
+            "--upgrade",
             f"--target={deps_folder}",
             *package_names,
         ],
         stdout=subprocess.DEVNULL,
+        env=env,
     )
 
     importlib.invalidate_caches()
-    log.warning(f"Dependencies installed successfully into {deps_folder}")
+    log.info(f"Dependencies installed successfully into {deps_folder}")

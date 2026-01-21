@@ -429,6 +429,55 @@ def _extract_social_links(soup: BeautifulSoup) -> dict:
     }
 
 
+def _looks_generic_description(text: str) -> bool:
+    if not text:
+        return False
+    lowered = text.lower()
+    generic_phrases = [
+        "justfor.fans",
+        "just for fans",
+        "login for free",
+        "interact with your favorite",
+        "text them, chat with them",
+        "watch their videos",
+    ]
+    return all(phrase in lowered for phrase in generic_phrases[:3]) or any(
+        phrase in lowered for phrase in generic_phrases[3:]
+    )
+
+
+def _extract_profile_bio(soup: BeautifulSoup) -> str:
+    # Prefer explicit profile text blocks if present
+    for block_id in ("profileTextLarge", "profileTextSmall"):
+        block = soup.find(id=block_id)
+        if not block:
+            continue
+        p = block.find("p")
+        text = p.get_text(" ", strip=True) if p else block.get_text(" ", strip=True)
+        text = text.replace("Read More", "").strip()
+        if text and len(text) >= 10:
+            return text
+
+    candidates: List[str] = []
+    patterns = re.compile(r"(bio|about|description|blurb|profile)", re.I)
+
+    for tag in soup.find_all(True, class_=patterns):
+        text = tag.get_text(" ", strip=True)
+        if text and len(text) >= 10:
+            candidates.append(text)
+
+    for tag in soup.find_all(True, id=patterns):
+        text = tag.get_text(" ", strip=True)
+        if text and len(text) >= 10:
+            candidates.append(text)
+
+    # Prefer the longest candidate as a simple heuristic
+    if candidates:
+        candidates.sort(key=len, reverse=True)
+        return candidates[0]
+    return ""
+
+
 def _extract_performer_from_profile(url: str, html: str) -> dict:
     soup = BeautifulSoup(html, "html.parser")
 
@@ -447,6 +496,10 @@ def _extract_performer_from_profile(url: str, html: str) -> dict:
     description = _meta_content(soup, "property", "og:description")
     if not description:
         description = _meta_content(soup, "name", "twitter:description")
+    if description and _looks_generic_description(description):
+        description = ""
+    if not description:
+        description = _extract_profile_bio(soup)
 
     image = _meta_content(soup, "property", "og:image")
     if not image:
@@ -619,9 +672,19 @@ def _scrape_post(
             )
         raise ScraperError("Missing poster_id (set in config or include in URL)")
 
+    target_label = target_id or ("text" if target_text else "latest")
+    log.info(
+        f"Scraping {'gallery' if require_gallery else 'scene'} for user "
+        f"{username or 'n/a'} (poster_id={poster_id}, target={target_label})"
+    )
+
     start_at = _int_config("start_at", 0)
     max_pages = _int_config("max_pages", 20)
     include_locked = bool(getattr(CONFIG, "include_locked", False))
+
+    log.info(
+        f"Options: start_at={start_at}, max_pages={max_pages}, include_locked={include_locked}"
+    )
 
     current = start_at
     pages = 0
