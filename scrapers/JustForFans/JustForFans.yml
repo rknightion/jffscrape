@@ -1,0 +1,51 @@
+name: JustForFans
+# requires: py_common
+# scrapes: JustForFans (performer posts)
+
+sceneByURL:
+  - action: script
+    url:
+      - justfor.fans
+    script:
+      - python
+      - JustForFans.py
+      - scene-by-url
+
+sceneByFragment:
+  action: script
+  script:
+    - python
+    - JustForFans.py
+    - scene-by-fragment
+
+sceneByQueryFragment:
+  action: script
+  script:
+    - python
+    - JustForFans.py
+    - scene-by-query-fragment
+
+performerByURL:
+  - action: script
+    url:
+      - justfor.fans
+    script:
+      - python
+      - JustForFans.py
+      - performer-by-url
+
+performerByFragment:
+  action: script
+  script:
+    - python
+    - JustForFans.py
+    - performer-by-fragment
+
+performerByName:
+  action: script
+  script:
+    - python
+    - JustForFans.py
+    - performer-by-name
+
+# Last Updated January 21, 2026
