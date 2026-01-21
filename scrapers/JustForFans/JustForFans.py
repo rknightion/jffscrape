@@ -60,6 +60,7 @@ STUDIO = {"name": "JustForFans", "url": "https://justfor.fans"}
 class ParsedPost:
     post_id: str
     post_id_digits: str
+    post_type: str
     date: Optional[str]
     full_text: str
     text_preview: str
@@ -159,6 +160,16 @@ def _parse_post(tag) -> ParsedPost:
     post_id = tag.get("id") or tag.get("data-post-id") or ""
     post_id_digits = _normalize_digits(post_id)
 
+    classes = tag.get("class", [])
+    post_type = "unknown"
+    if isinstance(classes, list):
+        if "video" in classes:
+            post_type = "video"
+        elif "photo" in classes:
+            post_type = "photo"
+        elif "text" in classes:
+            post_type = "text"
+
     locked = bool(tag.find(class_=lambda c: isinstance(c, str) and "lockedContent" in c))
 
     text_div = tag.find("div", class_="fr-view")
@@ -179,6 +190,7 @@ def _parse_post(tag) -> ParsedPost:
     return ParsedPost(
         post_id=post_id,
         post_id_digits=post_id_digits,
+        post_type=post_type,
         date=date,
         full_text=full_text,
         text_preview=text_preview,
@@ -207,6 +219,14 @@ def _extract_hashtags(text: str) -> List[str]:
         return []
     tags = {t.strip("#") for t in re.findall(r"#(\w+)", text)}
     return sorted(tags, key=str.lower)
+
+
+def _is_gallery_candidate(post: ParsedPost) -> bool:
+    if post.post_type == "photo":
+        return True
+    if post.photos and post.post_type != "video":
+        return True
+    return False
 
 
 def _impersonate_profile() -> str:
@@ -344,6 +364,46 @@ def _extract_poster_id_from_html(html: str, soup: Optional[BeautifulSoup]) -> st
 
     return ""
 
+def _normalize_url(url: str) -> str:
+    if not url:
+        return ""
+    if url.startswith("//"):
+        return f"https:{url}"
+    return url
+
+
+def _extract_social_links(soup: BeautifulSoup) -> dict:
+    twitter = ""
+    instagram = ""
+    bluesky = ""
+    extra_urls: List[str] = []
+
+    for tag in soup.find_all("a", href=True):
+        href = _normalize_url(str(tag.get("href", "")).strip())
+        if not href or href.startswith("javascript:"):
+            continue
+        lower = href.lower()
+        if "twitter.com/" in lower or "x.com/" in lower:
+            if not twitter:
+                twitter = href
+            continue
+        if "instagram.com/" in lower:
+            if not instagram:
+                instagram = href
+            continue
+        if "bsky.app/" in lower or "bsky.social" in lower:
+            if not bluesky:
+                bluesky = href
+            else:
+                extra_urls.append(href)
+
+    return {
+        "twitter": twitter,
+        "instagram": instagram,
+        "bluesky": bluesky,
+        "extra_urls": extra_urls,
+    }
+
 
 def _extract_performer_from_profile(url: str, html: str) -> dict:
     soup = BeautifulSoup(html, "html.parser")
@@ -368,11 +428,22 @@ def _extract_performer_from_profile(url: str, html: str) -> dict:
     if not image:
         image = _meta_content(soup, "name", "twitter:image")
 
-    performer = {"name": name, "urls": [url]}
+    urls = [url]
+    socials = _extract_social_links(soup)
+    if socials.get("bluesky"):
+        urls.append(socials["bluesky"])
+    if socials.get("extra_urls"):
+        urls.extend(socials["extra_urls"])
+
+    performer = {"name": name, "urls": list(dict.fromkeys([u for u in urls if u]))}
     if description:
         performer["details"] = description
     if image:
         performer["images"] = [image]
+    if socials.get("twitter"):
+        performer["twitter"] = socials["twitter"]
+    if socials.get("instagram"):
+        performer["instagram"] = socials["instagram"]
 
     return performer
 
@@ -427,6 +498,31 @@ def _build_scene(post: ParsedPost, url: Optional[str], performer: Optional[dict]
     return {k: v for k, v in scene.items() if v not in (None, [], "")}
 
 
+def _build_gallery(post: ParsedPost, url: Optional[str], performer: Optional[dict]) -> dict:
+    title = post.text_preview or "JustForFans post"
+    if post.date:
+        title = f"{title} ({post.date})"
+
+    gallery = {
+        "title": title,
+        "details": post.full_text or None,
+        "date": post.date,
+        "url": url,
+        "urls": post.photos or None,
+        "code": post.post_id_digits or post.post_id or None,
+        "studio": STUDIO,
+    }
+
+    tags = _extract_hashtags(post.full_text)
+    if tags:
+        gallery["tags"] = [{"name": tag} for tag in tags]
+
+    if performer:
+        gallery["performers"] = [performer]
+
+    return {k: v for k, v in gallery.items() if v not in (None, [], "")}
+
+
 def _int_config(name: str, default: int) -> int:
     value = getattr(CONFIG, name, default)
     try:
@@ -450,7 +546,12 @@ def _resolve_profile(session, url: Optional[str]) -> Tuple[str, Optional[dict]]:
 
 
 
-def _scrape_scene(url: Optional[str], target_id: str, target_text: str) -> dict:
+def _scrape_post(
+    url: Optional[str],
+    target_id: str,
+    target_text: str,
+    require_gallery: bool,
+) -> Tuple[ParsedPost, Optional[dict], Optional[str]]:
     user_id = getattr(CONFIG, "user_id", None)
     user_hash_4 = getattr(CONFIG, "user_hash_4", None)
     poster_id = getattr(CONFIG, "poster_id", None)
@@ -502,6 +603,11 @@ def _scrape_scene(url: Optional[str], target_id: str, target_text: str) -> dict:
     pages = 0
     latest_post: Optional[ParsedPost] = None
 
+    def post_ok(post: ParsedPost) -> bool:
+        if require_gallery:
+            return _is_gallery_candidate(post)
+        return True
+
     while pages < max_pages:
         pages += 1
         log.debug(f"Fetching posts: start_at={current}")
@@ -520,20 +626,21 @@ def _scrape_scene(url: Optional[str], target_id: str, target_text: str) -> dict:
             post = _parse_post(tag)
             if post.locked and not include_locked:
                 continue
+            if not post_ok(post):
+                continue
             cards.append(post)
-
-        if cards and latest_post is None:
-            latest_post = cards[0]
+            if latest_post is None:
+                latest_post = post
 
         if target_id or target_text:
             match = _find_target(cards, target_id, target_text)
             if match:
                 performer_payload = _select_scene_performer(performer, profile_url)
-                return _build_scene(match, url, performer_payload)
+                return match, performer_payload, profile_url
         else:
             if latest_post:
                 performer_payload = _select_scene_performer(performer, profile_url)
-                return _build_scene(latest_post, url, performer_payload)
+                return latest_post, performer_payload, profile_url
 
         next_start = _next_start_at(soup)
         if next_start is None or next_start <= current:
@@ -545,9 +652,21 @@ def _scrape_scene(url: Optional[str], target_id: str, target_text: str) -> dict:
 
     if latest_post:
         performer_payload = _select_scene_performer(performer, profile_url)
-        return _build_scene(latest_post, url, performer_payload)
+        return latest_post, performer_payload, profile_url
 
     raise ScraperError("No posts available for this performer")
+
+
+def _scrape_scene(url: Optional[str], target_id: str, target_text: str) -> dict:
+    post, performer, profile_url = _scrape_post(url, target_id, target_text, False)
+    return _build_scene(post, url or profile_url, performer)
+
+
+def _scrape_gallery(url: Optional[str], target_id: str, target_text: str) -> dict:
+    post, performer, profile_url = _scrape_post(url, target_id, target_text, True)
+    if not post.photos:
+        raise ScraperError("Selected post does not contain photos")
+    return _build_gallery(post, url or profile_url, performer)
 
 
 def _scrape_performer(url: Optional[str], name: Optional[str]) -> dict:
@@ -582,6 +701,8 @@ def main():
 
     if op in ("scene-by-url", "scene-by-fragment", "scene-by-query-fragment"):
         result = _scrape_scene(url, target_id, target_text)
+    elif op in ("gallery-by-url", "gallery-by-fragment"):
+        result = _scrape_gallery(url, target_id, target_text)
     elif op in ("performer-by-url", "performer-by-fragment"):
         result = _scrape_performer(url, args.get("name"))
     elif op == "performer-by-name":

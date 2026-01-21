@@ -7,7 +7,8 @@ Script-based Stash scrapers for JustForFans performer pages. It uses `curl_cffi`
 - Scrape a performer profile URL (e.g. `https://justfor.fans/BoundEagle1`).
 - Fetch post cards from JFF's `getPosts.php` endpoint.
 - Return a single Stash scene (latest visible post or a matching post when an ID/keyword is provided).
-- Scrape performer metadata (name, bio, image) from the profile page.
+- Scrape performer metadata (name, bio, image, social links) from the profile page.
+- Return a gallery for photo-only posts when using the gallery scraper.
 
 ## Install
 
@@ -78,6 +79,7 @@ include_locked = false
 - If Stash passes an ID or title fragment, the scraper will scan pages to find a matching post.
 
 - **Performer scraping**: Use “Scrape with…” on the performer URL to populate the performer entry.
+- **Gallery scraping**: Use “Scrape with…” on the performer URL and select the gallery scraper to return photo URLs for the latest photo post. Video posts will not return a gallery.
 
 ## Publish this repo as a scraper source (GitHub Pages)
 

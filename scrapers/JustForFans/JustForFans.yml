@@ -11,12 +11,28 @@ sceneByURL:
       - JustForFans.py
       - scene-by-url
 
+galleryByURL:
+  - action: script
+    url:
+      - justfor.fans
+    script:
+      - python
+      - JustForFans.py
+      - gallery-by-url
+
 sceneByFragment:
   action: script
   script:
     - python
     - JustForFans.py
     - scene-by-fragment
+
+galleryByFragment:
+  action: script
+  script:
+    - python
+    - JustForFans.py
+    - gallery-by-fragment
 
 sceneByQueryFragment:
   action: script
