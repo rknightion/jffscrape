@@ -101,6 +101,85 @@ def _normalize_key(value: str) -> str:
     return re.sub(r"[^a-z0-9]", "", value.lower())
 
 
+def _normalize_text(value: str) -> str:
+    if not value:
+        return ""
+    value = value.lower()
+    value = re.sub(r"[_\-]+", " ", value)
+    value = re.sub(r"[^a-z0-9\s]", " ", value)
+    value = re.sub(r"\s+", " ", value).strip()
+    return value
+
+
+def _extract_date_from_string(value: str) -> Optional[str]:
+    if not value:
+        return None
+    match = re.search(r"(20\d{2})[^\d]?(\d{2})[^\d]?(\d{2})", value)
+    if match:
+        return f"{match.group(1)}-{match.group(2)}-{match.group(3)}"
+    return None
+
+
+def _normalize_date(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    try:
+        return dateparser.parse(str(value)).date().isoformat()
+    except Exception:
+        return None
+
+
+def _strip_datetime_prefix(value: str) -> str:
+    if not value:
+        return ""
+    value = _normalize_text(value)
+    value = re.sub(r"^20\d{2}\s\d{2}\s\d{2}(\s\d{2}\s\d{2}\s\d{2})?\s*", "", value)
+    return value.strip()
+
+
+def _extract_keywords(value: str) -> List[str]:
+    value = _strip_datetime_prefix(value)
+    if not value:
+        return []
+    stopwords = {
+        "the",
+        "and",
+        "with",
+        "for",
+        "from",
+        "this",
+        "that",
+        "you",
+        "your",
+        "his",
+        "her",
+        "their",
+        "its",
+        "into",
+        "onto",
+        "over",
+        "under",
+        "video",
+        "scene",
+        "clip",
+        "part",
+        "episode",
+    }
+    words = []
+    for word in value.split():
+        if len(word) < 3 or word.isdigit() or word in stopwords:
+            continue
+        words.append(word)
+    # Preserve order, remove duplicates
+    seen = set()
+    ordered = []
+    for word in words:
+        if word not in seen:
+            seen.add(word)
+            ordered.append(word)
+    return ordered
+
+
 def _extract_ids_from_url(url: Optional[str]) -> Tuple[str, str]:
     if not url:
         return "", ""
@@ -320,15 +399,58 @@ def _next_start_at(soup: BeautifulSoup) -> Optional[int]:
     return int(match.group(1))
 
 
-def _find_target(posts: Iterable[ParsedPost], target_id: str, target_text: str) -> Optional[ParsedPost]:
+def _find_target(
+    posts: Iterable[ParsedPost],
+    target_id: str,
+    target_text: str,
+    target_date: Optional[str],
+    target_keywords: List[str],
+) -> Optional[ParsedPost]:
     target_digits = _normalize_digits(target_id)
-    target_text = target_text.lower().strip()
+    target_text_norm = _normalize_text(target_text)
 
-    for post in posts:
-        if target_digits and post.post_id_digits == target_digits:
-            return post
-        if target_text and post.full_text.lower().find(target_text) >= 0:
-            return post
+    if target_digits:
+        for post in posts:
+            if post.post_id_digits == target_digits:
+                return post
+
+    posts_list = list(posts)
+    if not posts_list:
+        return None
+
+    if target_date:
+        date_posts = [post for post in posts_list if post.date == target_date]
+        if not date_posts:
+            return None
+        if not target_keywords:
+            return date_posts[0]
+        best = None
+        best_score = -1
+        for post in date_posts:
+            haystack = _normalize_text(post.full_text or post.text_preview)
+            score = sum(1 for kw in target_keywords if kw in haystack)
+            if score > best_score:
+                best_score = score
+                best = post
+        return best if best else date_posts[0]
+
+    if target_text_norm:
+        for post in posts_list:
+            haystack = _normalize_text(post.full_text or post.text_preview)
+            if target_text_norm and target_text_norm in haystack:
+                return post
+
+    if target_keywords:
+        best = None
+        best_score = -1
+        for post in posts_list:
+            haystack = _normalize_text(post.full_text or post.text_preview)
+            score = sum(1 for kw in target_keywords if kw in haystack)
+            if score > best_score:
+                best_score = score
+                best = post
+        return best if best_score > 0 else None
+
     return None
 
 
@@ -627,6 +749,8 @@ def _scrape_post(
     url: Optional[str],
     target_id: str,
     target_text: str,
+    target_date: Optional[str],
+    target_keywords: List[str],
     require_gallery: bool,
 ) -> Tuple[ParsedPost, Optional[dict], Optional[str]]:
     user_id = getattr(CONFIG, "user_id", None)
@@ -672,7 +796,7 @@ def _scrape_post(
             )
         raise ScraperError("Missing poster_id (set in config or include in URL)")
 
-    target_label = target_id or ("text" if target_text else "latest")
+    target_label = target_id or (target_date or ("text" if target_text else "latest"))
     log.info(
         f"Scraping {'gallery' if require_gallery else 'scene'} for user "
         f"{username or 'n/a'} (poster_id={poster_id}, target={target_label})"
@@ -719,8 +843,8 @@ def _scrape_post(
             if latest_post is None:
                 latest_post = post
 
-        if target_id or target_text:
-            match = _find_target(cards, target_id, target_text)
+        if target_id or target_text or target_date or target_keywords:
+            match = _find_target(cards, target_id, target_text, target_date, target_keywords)
             if match:
                 performer_payload = _select_scene_performer(performer, profile_url)
                 return match, performer_payload, profile_url
@@ -734,7 +858,7 @@ def _scrape_post(
             break
         current = next_start
 
-    if target_id or target_text:
+    if target_id or target_text or target_date or target_keywords:
         raise ScraperError("Target post not found in scanned pages")
 
     if latest_post:
@@ -744,13 +868,29 @@ def _scrape_post(
     raise ScraperError("No posts available for this performer")
 
 
-def _scrape_scene(url: Optional[str], target_id: str, target_text: str) -> dict:
-    post, performer, profile_url = _scrape_post(url, target_id, target_text, False)
+def _scrape_scene(
+    url: Optional[str],
+    target_id: str,
+    target_text: str,
+    target_date: Optional[str],
+    target_keywords: List[str],
+) -> dict:
+    post, performer, profile_url = _scrape_post(
+        url, target_id, target_text, target_date, target_keywords, False
+    )
     return _build_scene(post, url or profile_url, performer)
 
 
-def _scrape_gallery(url: Optional[str], target_id: str, target_text: str) -> dict:
-    post, performer, profile_url = _scrape_post(url, target_id, target_text, True)
+def _scrape_gallery(
+    url: Optional[str],
+    target_id: str,
+    target_text: str,
+    target_date: Optional[str],
+    target_keywords: List[str],
+) -> dict:
+    post, performer, profile_url = _scrape_post(
+        url, target_id, target_text, target_date, target_keywords, True
+    )
     if not post.photos:
         raise ScraperError("Selected post does not contain photos")
     return _build_gallery(post, url or profile_url, performer)
@@ -784,12 +924,16 @@ def main():
     op, args = scraper_args()
     url = args.get("url") or (args.get("urls") or [None])[0]
     target_id = str(args.get("id") or args.get("code") or "")
-    target_text = str(args.get("title") or args.get("details") or "")
+    raw_title = str(args.get("title") or "")
+    raw_details = str(args.get("details") or "")
+    target_text = raw_title or raw_details
+    target_date = _normalize_date(args.get("date")) or _extract_date_from_string(raw_title)
+    target_keywords = _extract_keywords(f"{raw_title} {raw_details}".strip())
 
     if op in ("scene-by-url", "scene-by-fragment", "scene-by-query-fragment"):
-        result = _scrape_scene(url, target_id, target_text)
+        result = _scrape_scene(url, target_id, target_text, target_date, target_keywords)
     elif op in ("gallery-by-url", "gallery-by-fragment"):
-        result = _scrape_gallery(url, target_id, target_text)
+        result = _scrape_gallery(url, target_id, target_text, target_date, target_keywords)
     elif op in ("performer-by-url", "performer-by-fragment"):
         result = _scrape_performer(url, args.get("name"))
     elif op == "performer-by-name":

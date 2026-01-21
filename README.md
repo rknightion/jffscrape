@@ -87,8 +87,9 @@ include_locked = false
 
 **Scrape by Fragment** is used by the Tagger view. Stash passes a JSON “fragment” of the current scene (title, date, details, URL, etc.). The scraper tries to match a post by:
 1. post ID (if Stash provided one), otherwise
-2. title/details text substring, otherwise
-3. the latest visible post.
+2. date match (YYYY-MM-DD) inferred from the scene date or filename, otherwise
+3. keyword matching on title/details (underscores treated as spaces), otherwise
+4. the latest visible post.
 
 ### Recommended tagging workflow
 
